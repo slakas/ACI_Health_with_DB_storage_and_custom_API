@@ -1,5 +1,7 @@
 import requests
 import sys
+from loguru import logger
+
 
 class Connector():
     def __init__(self, apic_url, usr, passw):
@@ -9,9 +11,10 @@ class Connector():
         self.token = None
         self.apic_token()
 
-    def apic_token(self):
-        print("\tConnecting to ", self.apic_url, '...')
 
+    def apic_token(self):
+        # print("\tConnecting to ", self.apic_url, '...')
+        logger.info("Connecting to ", self.apic_url, '...')
         login_url = self.apic_url + '/api/aaaLogin.json'
 
         #body
@@ -27,8 +30,10 @@ class Connector():
         try:
             post_response = requests.post(login_url, json=login_body, timeout=5)
         except requests.exceptions.RequestException as e:
-            print("Error with APIC connection... \n", e)
+            logger.critical("Error with APIC connection... \n")
+            logger.exception("Error with APIC connection")
             sys.exit("Error with APIC connection... \n")
+
 
         #get json response
         auth_resp = post_response.json()
@@ -51,11 +56,14 @@ class Connector():
         try:
             response = requests.get(url, cookies=self.token)
             response.raise_for_status()
+            if response.json()['totalCount'] == '0':
+                logger.error('TotalCount is 0 for {uri}', uri=uri)
+                return None
             return response.json()
 
         except requests.exceptions.RequestException as e:
-            print("Http error: ", e)
-            sys.exit("Http error ")
+            logger.exception("Http error")
+            sys.exit()
 
     def __del__(self):
         del Connector.apic_token
