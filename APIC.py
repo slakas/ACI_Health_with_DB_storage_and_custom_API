@@ -13,7 +13,6 @@ class Connector():
 
 
     def apic_token(self):
-        # print("\tConnecting to ", self.apic_url, '...')
         logger.info("Connecting to ", self.apic_url, '...')
         login_url = self.apic_url + '/api/aaaLogin.json'
 

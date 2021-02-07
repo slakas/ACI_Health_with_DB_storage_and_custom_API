@@ -7,15 +7,8 @@ from models.orm_aci import DataBase, Tenant, Health, Node, App, BD, Epg, FaultSu
 from sqlalchemy import desc, exc
 import sys, getopt
 from loguru import logger
-from sqlalchemy.sql import case
-
-import json
-
-
-
 
 class ACIHealt(Connector):
-
 
     def getTenants(self, db):
         getTenantsURL = self.apic_url + '/api/class/fvTenant.json'
@@ -221,6 +214,8 @@ class ACIHealt(Connector):
                     app_id = app.id
                 ))
 
+        db.save_and_exit()
+
     def getBdHealth(self, db):
         logger.info('Get BDs list from DB')
         for bd in db.session.query(BD).all():
@@ -317,15 +312,6 @@ class ACIHealt(Connector):
 
 
             for fault in apic_response['imdata']:
-                # cause = fault['faultSummary']['attributes']['cause']
-                # code = fault['faultSummary']['attributes']['code']
-                # count = int(fault['faultSummary']['attributes']['count'])
-                # descr = fault['faultSummary']['attributes']['descr']
-                # domain = fault['faultSummary']['attributes']['domain']
-                # nonAcked = int(fault['faultSummary']['attributes']['nonAcked'])
-                # rule = fault['faultSummary']['attributes']['rule']
-                # severity = fault['faultSummary']['attributes']['severity']
-                # type = fault['faultSummary']['attributes']['type']
                 dict = {
                     'cause' : fault['faultSummary']['attributes']['cause'],
                     'code' : fault['faultSummary']['attributes']['code'],
@@ -352,7 +338,7 @@ class ACIHealt(Connector):
             sys.exit()
 
         for app in apps_list:
-            print(app.name)
+            logger.info(app.__dict__)
 
     def saveToFile(self, data):
         f = open('json_output.json', 'w')
@@ -386,7 +372,7 @@ if __name__ == "__main__":
 
 
     logger.add(sys.stderr, format="{time} {level} {message}", filter="test" )
-    logger.add(LOGFILE, level="ERROR", rotation="01:00")
+    logger.add(LOGFILE, level="WARNING", rotation="01:00")
 
 
     api_aci = ACIHealt(apic_url, usr, passwd)

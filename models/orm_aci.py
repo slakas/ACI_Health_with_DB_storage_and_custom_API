@@ -28,6 +28,7 @@ class App(dbModel):
     dn = Column(String(250))
     del_flag = Column(Boolean(), default=False)
     tenant_id = Column(Integer, ForeignKey('tenant.id'), nullable=True)
+    epg = relationship('Epg', backref='app')
     health = relationship('Health', backref='app')
 
 class BD(dbModel):
@@ -126,18 +127,38 @@ class DataBase():
                 logger.warning('Missing item {name}', name=row.name)
                 row.del_flag = True
 
-        # self.session.commit()
 
-    def dynamic_clean(self, table):
+    def dynamic_clean(self, table, recursive=False):
+
+        del_list = []
         del_rows = self.session.query(table).filter_by(del_flag=1).all()
 
-        if len(del_rows) == 0:
+        for element in del_rows:
+            # clean health rows
+            del_list.append(element.health)
+            # Recursive clean
+            if table.__tablename__ == 'tenant':
+                # relationship: health, app, bd
+                del_list.append( element.health)
+                del_list.append( element.app)
+                del_list.append( element.bd)
+
+            elif table.__tablename__ == 'app':
+                # relationship :    tenant_id ,   health
+                del_list.append(element.health)
+                del_list.append(element.epg)
+
+
+        del_list.append(del_rows)
+
+        if len(del_list) == 0:
             logger.info('Nothing to remove ')
             return None
         else:
-            for row in del_rows:
-                logger.info('Try do remove {x}', x=row.name)
-                self.session.delete(row)
+            for list in del_list:
+                for row in list:
+                    logger.warning('Try do remove {y}: {x}', y=row.__tablename__, x=row.__dict__)
+                    self.session.delete(row)
 
     def save_and_exit(self):
         # Save and exit database
