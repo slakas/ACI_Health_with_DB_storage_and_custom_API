@@ -1,0 +1,12 @@
+[apic]
+apic_url = https://sandboxapicdc.cisco.com
+usr = admin
+passwd = ciscopsdt
+
+[logger]
+LOGLEVEL = WARNING
+LOGFILE = logs/aci_health.log
+
+[database]
+db_path = database/aci.db
+

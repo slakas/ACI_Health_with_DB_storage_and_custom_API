@@ -2,11 +2,13 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime
-from APIC import Connector
-from models.orm_aci import DataBase, Tenant, Health, Node, App, BD, Epg, FaultSummary
+from modules.APIC import Connector
+from models.orm_aci import DataBase, Tenant, Health, Node, App, BD, Epg, FaultSummary, FaultDetail
 from sqlalchemy import desc, exc
-import sys, getopt
 from loguru import logger
+import sys, getopt, configparser
+import maya
+import json
 
 class ACIHealt(Connector):
 
@@ -298,6 +300,55 @@ class ACIHealt(Connector):
                              )
         db.save_and_exit()
 
+    def getFaultDetail(self, db, code, faultsummary_id):
+        logger.debug('Get fault {x} details', x=code)
+        url = self.apic_url + '/api/node/class/faultInfo.json?query-target-filter=and(eq(faultInfo.code,"'+code+'"))'
+
+        apic_response = self.get(url)
+        if apic_response:
+
+            # db.create_tables()
+            # get fault for update
+            # logger.debug('Response from apic, total: {x}', x=apic_response['totalCount'])
+            # if apic_response['totalCount'] != '1':
+            #     logger.critical('Zlamano zalozenia algorytmu. Kod fault nie jest uniq')
+            #     logger.debug(json.dumps(apic_response['imdata'], indent=4))
+
+            # payload = {}
+            for detail in apic_response['imdata']:
+                try:
+                    if 'faultInst' in detail:
+                        fault_prefix = 'faultInst'
+                    elif 'faultDelegate' in detail:
+                        fault_prefix = 'faultDelegate'
+
+                    created_date = detail[fault_prefix]['attributes']['created']
+                    created_date = maya.parse(created_date).datetime()
+                    lastTransition = detail[fault_prefix]['attributes']['lastTransition']
+                    lastTransition = maya.parse(lastTransition).datetime()
+
+                    payload = {
+                        'code' : code,
+                        'ack' : detail[fault_prefix]['attributes']['ack'],
+                        'descr' : detail[fault_prefix]['attributes']['descr'],
+                        'dn' : detail[fault_prefix]['attributes']['dn'],
+                        'created' : created_date,
+                        'lastTransition' : lastTransition,
+                        'domain' : detail[fault_prefix]['attributes']['domain'],
+                        'rule' : detail[fault_prefix]['attributes']['rule'],
+                        'severity' : detail[fault_prefix]['attributes']['severity'],
+                        'type' : detail[fault_prefix]['attributes']['type'],
+                        'faultsummary_id' : faultsummary_id
+                    }
+                    db.dynamic_add(FaultDetail, payload)
+
+                except:
+                    logger.exception('FaultDelegate problem with apic response')
+                    logger.debug(json.dumps(apic_response, indent=4))
+                    sys.exit()
+
+            db.save_and_exit()
+
     def getFaultsSummary(self, db):
         logger.debug('Get FaultsSummary')
 
@@ -305,6 +356,9 @@ class ACIHealt(Connector):
         apic_response = self.get(url)
 
         if apic_response:
+            logger.debug('Drop FaultDetail table')
+            FaultDetail.__table__.drop(db.engine)
+            logger.debug('Create new empty table faultdetail')
             logger.debug('Drop FaultSummary table')
             FaultSummary.__table__.drop(db.engine)
             logger.debug('Create new empty table faultsummary')
@@ -312,9 +366,10 @@ class ACIHealt(Connector):
 
 
             for fault in apic_response['imdata']:
+                code = fault['faultSummary']['attributes']['code']
                 dict = {
                     'cause' : fault['faultSummary']['attributes']['cause'],
-                    'code' : fault['faultSummary']['attributes']['code'],
+                    'code' : code,
                     'count' : int(fault['faultSummary']['attributes']['count']),
                     'descr' : fault['faultSummary']['attributes']['descr'],
                     'domain' : fault['faultSummary']['attributes']['domain'],
@@ -324,7 +379,9 @@ class ACIHealt(Connector):
                     'type' : fault['faultSummary']['attributes']['type']
                 }
                 logger.debug('Add data to faultsummary table')
-                db.dynamic_add(FaultSummary, dict)
+                current_item_id = db.dynamic_add(FaultSummary, dict)
+                # Get Fault detail
+                self.getFaultDetail(db, code, current_item_id)
 
             db.save_and_exit()
 
@@ -346,48 +403,38 @@ class ACIHealt(Connector):
         f.close()
 
 
-if __name__ == "__main__":
-    apic_url = 'https://sandboxapicdc.cisco.com'
-    usr = 'admin'
-    passwd = 'ciscopsdt'
-
-    # Default LogLevel
-    LOGLEVEL = 'WARNING'
-    LOGFILE = 'logs/aci_health.log'
-
-    try:
-        opts, args = getopt.getopt(sys.argv[1:],
-                                   "hl:p:u:do:f:t:",
-                                   ["help", "debug", "info"
-                                    ])
-    except getopt.GetoptError:
-        print(str(sys.argv[0]) + ' : illegal option')
-        sys.exit(2)
-
-    for opt, arg in opts:
-         if opt in ('-d', '--debug'):
-            LOGLEVEL = "DEBUG"
-         elif opt in ('-i', '--info'):
-             LOGLEVEL = "INFO"
-
-
-    logger.add(sys.stderr, format="{time} {level} {message}", filter="test" )
-    logger.add(LOGFILE, level="WARNING", rotation="01:00")
-
-
-    api_aci = ACIHealt(apic_url, usr, passwd)
-    db = DataBase('database/aci.db')
-    db.create_tables()
-    api_aci.getTenants(db)
-    api_aci.getNodes(db)
-    api_aci.getTenantHealth(db)
-    api_aci.getNodesHelath(db)
-    api_aci.getAppAndBDList(db)
-    api_aci.getAppHealth(db)
-    api_aci.getBdHealth(db)
-    api_aci.getEpgList(db)
-    api_aci.getEpgHelath(db)
-    api_aci.getFaultsSummary(db)
-    # api_aci.tmp(db)
-
+# if __name__ == "__main__":
+#
+#     # Load configuration form conf.cnf file
+#     cnf_file = 'conf.cnf'
+#
+#     config_path = cnf_file
+#     config = configparser.ConfigParser()
+#     config.readfp(open(config_path))
+#     apic_url = config.get('apic', 'apic_url')
+#     usr = config.get('apic', 'usr')
+#     passwd = config.get('apic', 'passwd')
+#
+#     # Default LogLevel
+#     LOGLEVEL = config.get('logger', 'LOGLEVEL')
+#     LOGFILE = config.get('logger', 'LOGFILE')
+#
+#     logger.add(sys.stdout, colorize=True, format="<green>{time}</green> <level>{message}</level>", level="INFO" )
+#     logger.add(LOGFILE, level="WARNING", rotation="01:00")
+#
+#     api_aci = ACIHealt(apic_url, usr, passwd)
+#     db = DataBase('database/aci.db')
+#     db.create_tables()
+#     api_aci.getTenants(db)
+#     api_aci.getNodes(db)
+#     api_aci.getTenantHealth(db)
+#     api_aci.getNodesHelath(db)
+#     api_aci.getAppAndBDList(db)
+#     api_aci.getAppHealth(db)
+#     api_aci.getBdHealth(db)
+#     api_aci.getEpgList(db)
+#     api_aci.getEpgHelath(db)
+#     api_aci.getFaultsSummary(db)
+#     # api_aci.tmp(db)
+#
 
