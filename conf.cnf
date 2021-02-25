@@ -3,10 +3,22 @@ apic_url = https://sandboxapicdc.cisco.com
 usr = admin
 passwd = ciscopsdt
 
+[dnac]
+url = https://sandboxdnac.cisco.com
+usr = devnetuser
+passwd = Cisco123!
+
 [logger]
 LOGLEVEL = WARNING
 LOGFILE = logs/aci_health.log
 
 [database]
-db_path = database/aci.db
+db_path = localhost:3306/sqlalchemy
+user = pyuser
+passwd = pyuser123
+
+[dna_database]
+db_path = localhost:3306/dna
+user = pyuser
+passwd = pyuser123
 

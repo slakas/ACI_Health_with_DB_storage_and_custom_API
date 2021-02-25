@@ -5,7 +5,8 @@ from sqlalchemy import Column, ForeignKey, Integer, String, Text, create_engine,
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from loguru import logger
-
+from pathlib import Path
+import configparser, sys
 
 '''
 MySQL helper docs:
@@ -116,12 +117,18 @@ class FaultDetail(dbModel):
 
 class DataBase():
     def __init__(self, db_file):
+        # Load configuration form conf.cnf file
+        cnf_file = Path(__file__).resolve().parent.parent.joinpath('conf.cnf')
+        config = configparser.ConfigParser()
+        config.readfp(open(cnf_file))
         # Create instance of Engine class to manage the database
         # SQLite
         # self.engine = create_engine('sqlite:///'+db_file)
         # MySQL
         self.engine = create_engine(
-            'mysql+mysqlconnector://pyuser:pyuser123@localhost:3306/sqlalchemy')
+            'mysql+mysqlconnector://'
+                +config.get('database', 'user')+':'
+                +config.get('database', 'passwd')+'@'+db_file)
         self.session = self.create_session()
         self.con = self.engine.connect()
 

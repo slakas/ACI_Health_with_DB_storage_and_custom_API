@@ -74,9 +74,11 @@ class Connector():
             # Check token and renew if needed
             if response.json()['totalCount'] == '0':
                 logger.error('TotalCount is 0 for {uri}', uri=uri)
-                return None
 
-            return response.json()
+            elif response and 'imdata' in response.json():
+                return response.json()
+
+            return None
 
         except requests.exceptions.RequestException as e:
             logger.exception("Http error")

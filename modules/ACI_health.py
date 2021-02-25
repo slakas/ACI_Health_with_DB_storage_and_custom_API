@@ -10,6 +10,9 @@ import sys, getopt, configparser
 import maya
 import json
 
+logger.propagate = False
+# logger.setLevel(LOGLEVEL)
+
 class ACIHealt(Connector):
 
     def getTenants(self, db):
@@ -101,17 +104,18 @@ class ACIHealt(Connector):
             getTenantHealthURL = self.apic_url + '/api/mo/uni/tn-'+tenant_name+'/health.json'
             tenantHealthURL = self.get(getTenantHealthURL)
 
-            for tenant in tenantHealthURL['imdata']:
-                # Add tenant health to database table health
-                db.session.add(Health(
-                    healthscore=int(tenant['healthInst']['attributes']['cur']),
-                    time=datetime.now(),
-                    tenant_id=tn.id
-                ))
-                logger.debug('Save to database {tn} healthscore: {healthscore}',
-                             tn=tenant['healthInst']['attributes']['dn'],
-                             healthscore=tenant['healthInst']['attributes']['cur']
-                             )
+            if tenantHealthURL:
+                for tenant in tenantHealthURL['imdata']:
+                    # Add tenant health to database table health
+                    db.session.add(Health(
+                        healthscore=int(tenant['healthInst']['attributes']['cur']),
+                        time=datetime.now(),
+                        tenant_id=tn.id
+                    ))
+                    logger.debug('Save to database {tn} healthscore: {healthscore}',
+                                 tn=tenant['healthInst']['attributes']['dn'],
+                                 healthscore=tenant['healthInst']['attributes']['cur']
+                                 )
         db.save_and_exit()
 
     def getNodesHelath(self, db):
@@ -209,12 +213,13 @@ class ACIHealt(Connector):
             logger.info('Get app [{app}] health', app=app.name)
             appsHealths = self.get(appHealthUrl)
 
-            for appHealth in appsHealths['imdata']:
-                db.session.add(Health(
-                    healthscore = int(appHealth['fvAp']['children'][0]['healthInst']['attributes']['cur']),
-                    time = datetime.now(),
-                    app_id = app.id
-                ))
+            if appsHealths:
+                for appHealth in appsHealths['imdata']:
+                    db.session.add(Health(
+                        healthscore = int(appHealth['fvAp']['children'][0]['healthInst']['attributes']['cur']),
+                        time = datetime.now(),
+                        app_id = app.id
+                    ))
 
         db.save_and_exit()
 
@@ -228,12 +233,13 @@ class ACIHealt(Connector):
             logger.info('Get BD [{bd}] health', bd=bd.name)
             bdsHealths = self.get(bdHealthUrl)
 
-            for bdHealth in bdsHealths['imdata']:
-                db.session.add(Health(
-                    healthscore = int(bdHealth['fvBD']['children'][0]['healthInst']['attributes']['cur']),
-                    time = datetime.now(),
-                    bd_id = bd.id
-                ))
+            if bdsHealths:
+                for bdHealth in bdsHealths['imdata']:
+                    db.session.add(Health(
+                        healthscore = int(bdHealth['fvBD']['children'][0]['healthInst']['attributes']['cur']),
+                        time = datetime.now(),
+                        bd_id = bd.id
+                    ))
         db.save_and_exit()
 
     def getEpgList(self,db):
@@ -288,16 +294,17 @@ class ACIHealt(Connector):
             getHealthURL = self.apic_url + '/api/mo/' + epg.dn + '/health.json'
             getHealthURL = self.get(getHealthURL)
 
-            for epgHealth in getHealthURL['imdata']:
-                db.session.add(Health(
-                    healthscore=int(epgHealth['healthInst']['attributes']['cur']),
-                    time=datetime.now(),
-                    epg_id=epg.id
-                ))
-                logger.debug('Save to database {tn} healthscore: {healthscore}',
-                             tn=epgHealth['healthInst']['attributes']['dn'],
-                             healthscore=epgHealth['healthInst']['attributes']['cur']
-                             )
+            if getHealthURL:
+                for epgHealth in getHealthURL['imdata']:
+                    db.session.add(Health(
+                        healthscore=int(epgHealth['healthInst']['attributes']['cur']),
+                        time=datetime.now(),
+                        epg_id=epg.id
+                    ))
+                    logger.debug('Save to database {tn} healthscore: {healthscore}',
+                                 tn=epgHealth['healthInst']['attributes']['dn'],
+                                 healthscore=epgHealth['healthInst']['attributes']['cur']
+                                 )
         db.save_and_exit()
 
     def getFaultDetail(self, db, code, faultsummary_id):
@@ -306,15 +313,6 @@ class ACIHealt(Connector):
 
         apic_response = self.get(url)
         if apic_response:
-
-            # db.create_tables()
-            # get fault for update
-            # logger.debug('Response from apic, total: {x}', x=apic_response['totalCount'])
-            # if apic_response['totalCount'] != '1':
-            #     logger.critical('Zlamano zalozenia algorytmu. Kod fault nie jest uniq')
-            #     logger.debug(json.dumps(apic_response['imdata'], indent=4))
-
-            # payload = {}
             for detail in apic_response['imdata']:
                 try:
                     if 'faultInst' in detail:
@@ -401,40 +399,3 @@ class ACIHealt(Connector):
         f = open('json_output.json', 'w')
         f.write(data)
         f.close()
-
-
-# if __name__ == "__main__":
-#
-#     # Load configuration form conf.cnf file
-#     cnf_file = 'conf.cnf'
-#
-#     config_path = cnf_file
-#     config = configparser.ConfigParser()
-#     config.readfp(open(config_path))
-#     apic_url = config.get('apic', 'apic_url')
-#     usr = config.get('apic', 'usr')
-#     passwd = config.get('apic', 'passwd')
-#
-#     # Default LogLevel
-#     LOGLEVEL = config.get('logger', 'LOGLEVEL')
-#     LOGFILE = config.get('logger', 'LOGFILE')
-#
-#     logger.add(sys.stdout, colorize=True, format="<green>{time}</green> <level>{message}</level>", level="INFO" )
-#     logger.add(LOGFILE, level="WARNING", rotation="01:00")
-#
-#     api_aci = ACIHealt(apic_url, usr, passwd)
-#     db = DataBase('database/aci.db')
-#     db.create_tables()
-#     api_aci.getTenants(db)
-#     api_aci.getNodes(db)
-#     api_aci.getTenantHealth(db)
-#     api_aci.getNodesHelath(db)
-#     api_aci.getAppAndBDList(db)
-#     api_aci.getAppHealth(db)
-#     api_aci.getBdHealth(db)
-#     api_aci.getEpgList(db)
-#     api_aci.getEpgHelath(db)
-#     api_aci.getFaultsSummary(db)
-#     # api_aci.tmp(db)
-#
-
